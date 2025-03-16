@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Script Manager</title>
+    <style>
+        /* Background */
+        body {
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            background: linear-gradient(135deg, #1f1c2c, #928dab);
+            height: 100vh;
+            padding: 20px;
+            color: white;
+        }
+
+        /* Title */
+        h1 {
+            font-size: 28px;
+            margin-bottom: 20px;
+        }
+
+        /* Upload Box */
+        .upload-box {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            display: inline-block;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+        }
+
+        input {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+        }
+
+        /* Button Styling */
+        button {
+            padding: 12px 20px;
+            margin: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .upload-btn {
+            background: #1DB954;
+            color: white;
+            font-weight: bold;
+        }
+
+        .upload-btn:hover {
+            background: #17a045;
+        }
+
+        /* Script List */
+        .script-list {
+            margin-top: 20px;
+            display: inline-block;
+            text-align: left;
+        }
+
+        .script-item {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .script-name {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .start {
+            background: #27ae60;
+            color: white;
+        }
+
+        .stop {
+            background: #c0392b;
+            color: white;
+            display: none;
+        }
+
+        /* Console Box */
+        .console-box {
+            margin-top: 30px;
+            background: rgba(0, 0, 0, 0.5);
+            color: lime;
+            border-radius: 10px;
+            padding: 15px;
+            width: 80%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: left;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .console-box h3 {
+            margin-bottom: 10px;
+        }
+
+        pre {
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 14px;
+            background: black;
+            padding: 10px;
+            border-radius: 5px;
+            color: lime;
+        }
+    </style>
+</head>
+<body>
+    <h1>Python Script Manager</h1>
+
+    <!-- Upload & Deploy Section -->
+    <div class="upload-box">
+        <input type="file" id="fileInput" accept=".py">
+        <button class="upload-btn" onclick="uploadFile()">Upload & Deploy</button>
+    </div>
+
+    <!-- List of Uploaded Scripts -->
+    <div class="script-list" id="scriptList"></div>
+
+    <!-- Console Output -->
+    <div class="console-box">
+        <h3>Console Output</h3>
+        <pre id="consoleOutput">No output yet.</pre>
+    </div>
+
+    <script>
+    let logIntervals = {}; // Store intervals for each running bot
+
+    function uploadFile() {
+        let fileInput = document.getElementById("fileInput");
+        let file = fileInput.files[0];
+
+        if (!file) {
+            alert("Please select a file.");
+            return;
+        }
+
+        let formData = new FormData();
+        formData.append("file", file);
+
+        fetch("/upload", { method: "POST", body: formData })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message || data.error);
+                if (data.filename) addScriptToList(data.filename);
+            });
+    }
+
+    function addScriptToList(scriptName) {
+        let scriptList = document.getElementById("scriptList");
+        let scriptItem = document.createElement("div");
+        scriptItem.classList.add("script-item");
+        scriptItem.id = `script-${scriptName}`;
+        scriptItem.innerHTML = `
+            <span class="script-name">${scriptName}</span>
+            <div>
+                <button class="start" onclick="toggleScript('${scriptName}', true)">Start</button>
+                <button class="stop" onclick="toggleScript('${scriptName}', false)" style="display: none;">Stop</button>
+            </div>
+        `;
+        scriptList.appendChild(scriptItem);
+    }
+
+    function toggleScript(scriptName, isStarting) {
+        let action = isStarting ? "start" : "stop";
+        fetch(`/${action}/${scriptName}`)
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message || data.error);
+                updateButtonState(scriptName, isStarting);
+
+                if (isStarting) {
+                    fetchLogs(scriptName);
+                    logIntervals[scriptName] = setInterval(() => fetchLogs(scriptName), 2000); // Auto-refresh logs
+                } else {
+                    clearInterval(logIntervals[scriptName]); // Stop auto-refresh
+                    document.getElementById("consoleOutput").innerText = "No output yet."; // Clear logs
+                }
+            });
+    }
+
+    function updateButtonState(scriptName, isRunning) {
+        let scriptItem = document.getElementById(`script-${scriptName}`);
+        if (scriptItem) {
+            let startButton = scriptItem.querySelector(".start");
+            let stopButton = scriptItem.querySelector(".stop");
+
+            if (isRunning) {
+                startButton.style.display = "none";
+                stopButton.style.display = "inline-block";
+            } else {
+                startButton.style.display = "inline-block";
+                stopButton.style.display = "none";
+            }
+        }
+    }
+
+    function fetchLogs(scriptName) {
+        fetch(`/logs/${scriptName}`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("consoleOutput").innerText = data.logs || "Bot is running...";
+            });
+    }
+</script>
+</body>
+</html>
